@@ -47,17 +47,30 @@ install_url(url,
    file — i.e. it is a source package, not an arbitrary archive.
 3. **Read metadata** from the extracted `DESCRIPTION` via `read.dcf()` to get
    the real `Package` name and `Version` (the filename is not trusted).
-4. **Install** by delegating to the same machinery `install.packages()` uses
+4. **Detect the package type** — a `.tar.gz` is not necessarily a *source*
+   package: binary builds (`R CMD INSTALL --build` on Linux, macOS `.tgz`) are
+   gzipped tarballs too, so the type cannot be assumed from the URL or
+   extension. Detect it from the contents: a `Built:` field in `DESCRIPTION`
+   (equivalently, a top-level `Meta/package.rds` in the tarball listing) marks
+   a binary package; absence marks a source package.
+   - **Source** → proceed to install (step 5).
+   - **Binary** → v0.1.0 stops with a clear error stating that the tarball is
+     a binary build (including the `Built:` platform string) and that only
+     source tarballs are supported for now. Binary installs are scheduled for
+     v0.3.0, where the `Built:` platform must additionally be checked against
+     `R.version$platform` before installing.
+5. **Install** by delegating to the same machinery `install.packages()` uses
    for local files: call `utils::install.packages(pkgs = tarball_path,
    repos = NULL, type = "source", lib = lib, quiet = quiet,
-   INSTALL_opts = INSTALL_opts)`. This gives us `R CMD INSTALL` semantics —
-   compilation of src/, staged install, lock directories — for free and
-   guarantees "works the same as install.packages()".
-5. **Verify & report**: confirm the package can be found in `lib` afterwards
+   INSTALL_opts = INSTALL_opts)` — safe here because step 4 has verified the
+   tarball really is a source package. This gives us `R CMD INSTALL`
+   semantics — compilation of src/, staged install, lock directories — for
+   free and guarantees "works the same as install.packages()".
+6. **Verify & report**: confirm the package can be found in `lib` afterwards
    (`find.package(pkg, lib.loc = lib)`); return (invisibly) a data frame with
    `package`, `version`, `lib`, `url`, one row per input URL, mirroring the
    invisible-return convention of `install.packages()`.
-6. **Clean up** downloaded files with `on.exit(unlink(...), add = TRUE)` even
+7. **Clean up** downloaded files with `on.exit(unlink(...), add = TRUE)` even
    on error.
 
 **Error behaviour**
@@ -72,8 +85,9 @@ install_url(url,
 
 - No dependency resolution (`dependencies = TRUE` errors with "not yet
   supported"; planned for a later release).
-- No binary packages (`.zip` / `.tgz`), no `git`/GitHub refs, no repos —
-  source tarball URLs only.
+- No binary packages: binary tarballs are *detected* (see step 4) but
+  rejected with an informative error rather than installed; `.zip` is not
+  accepted at all. No `git`/GitHub refs, no repos — source tarball URLs only.
 - No authentication headers, retries, or proxies beyond what
   `download.file()` already supports.
 - No caching of downloads.
@@ -108,8 +122,9 @@ URLs pointing at fixture tarballs built during the test run with
 2. **M2 — Happy path**: download + validate + install a single URL; test with a
    `file://` fixture tarball.
 3. **M3 — Robustness**: magic-byte validation, DESCRIPTION metadata check,
+   source-vs-binary detection (reject binary tarballs with a clear error),
    cleanup on error, clear error messages; tests for corrupt/non-package
-   archives and unreachable URLs.
+   archives, binary tarballs, and unreachable URLs.
 4. **M4 — Parity details**: multiple URLs, `lib`/`quiet`/`INSTALL_opts`
    passthrough, invisible return value; document behaviour differences (if
    any) from `install.packages()` in the man page.
@@ -121,7 +136,8 @@ URLs pointing at fixture tarballs built during the test run with
 - **v0.2.0** — dependency resolution: parse `Depends`/`Imports`/`LinkingTo`
   from the tarball's DESCRIPTION and install missing ones from CRAN via
   `install.packages()`; `dependencies = TRUE` becomes functional.
-- **v0.3.0** — binary tarballs (`.tgz`, `.zip`) with platform detection, and
+- **v0.3.0** — binary tarballs (`.tar.gz` with a `Built:` field, `.tgz`,
+  `.zip`) with platform-compatibility checks against `R.version$platform`, and
   checksum verification (`sha256 =` argument using `tools::md5sum`-style
   helpers or a base implementation).
 - **v0.4.0** — convenience resolvers: GitHub release/tag URLs expanded to
