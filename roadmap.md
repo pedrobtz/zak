@@ -59,18 +59,32 @@ install_url(url,
      source tarballs are supported for now. Binary installs are scheduled for
      v0.3.0, where the `Built:` platform must additionally be checked against
      `R.version$platform` before installing.
-5. **Install** by delegating to the same machinery `install.packages()` uses
+5. **Pre-flight dependency check** — installing from a file does *not* resolve
+   dependencies: with `repos = NULL`, `install.packages()` ignores its
+   `dependencies` argument entirely and just runs `R CMD INSTALL`, which
+   requires `Depends`/`Imports`/`LinkingTo` packages to already be installed
+   and otherwise aborts with a terse "dependency 'x' is not available" error.
+   So before installing, parse those fields from `DESCRIPTION`
+   (`tools:::.split_dependencies()`-style parsing implemented with base
+   string functions), drop base/recommended packages that ship with R
+   (`installed.packages(priority = "base")`), and check the rest against the
+   current `.libPaths()` with `find.package()`. If any are missing, stop
+   up front with a single clear error listing all missing dependencies and a
+   hint to install them first (e.g. via `install.packages()` from CRAN).
+   Version requirements (e.g. `pkg (>= 1.2)`) are checked too, using
+   `utils::compareVersion()`.
+6. **Install** by delegating to the same machinery `install.packages()` uses
    for local files: call `utils::install.packages(pkgs = tarball_path,
    repos = NULL, type = "source", lib = lib, quiet = quiet,
    INSTALL_opts = INSTALL_opts)` — safe here because step 4 has verified the
    tarball really is a source package. This gives us `R CMD INSTALL`
    semantics — compilation of src/, staged install, lock directories — for
-   free and guarantees "works the same as install.packages()".
-6. **Verify & report**: confirm the package can be found in `lib` afterwards
+   free and matches what `install.packages()` itself does for local files.
+7. **Verify & report**: confirm the package can be found in `lib` afterwards
    (`find.package(pkg, lib.loc = lib)`); return (invisibly) a data frame with
    `package`, `version`, `lib`, `url`, one row per input URL, mirroring the
    invisible-return convention of `install.packages()`.
-7. **Clean up** downloaded files with `on.exit(unlink(...), add = TRUE)` even
+8. **Clean up** downloaded files with `on.exit(unlink(...), add = TRUE)` even
    on error.
 
 **Error behaviour**
@@ -83,8 +97,12 @@ install_url(url,
 
 ### Explicit non-goals for v0.1.0
 
-- No dependency resolution (`dependencies = TRUE` errors with "not yet
-  supported"; planned for a later release).
+- No dependency *installation* (`dependencies = TRUE` errors with "not yet
+  supported"; planned for a later release). This actually matches
+  `install.packages()` itself, which ignores `dependencies` when installing
+  from a local file (`repos = NULL`). What v0.1.0 does add is the pre-flight
+  *check* (step 5) so missing dependencies produce one clear upfront error
+  instead of a mid-install failure.
 - No binary packages: binary tarballs are *detected* (see step 4) but
   rejected with an informative error rather than installed; `.zip` is not
   accepted at all. No `git`/GitHub refs, no repos — source tarball URLs only.
@@ -123,8 +141,9 @@ URLs pointing at fixture tarballs built during the test run with
    `file://` fixture tarball.
 3. **M3 — Robustness**: magic-byte validation, DESCRIPTION metadata check,
    source-vs-binary detection (reject binary tarballs with a clear error),
-   cleanup on error, clear error messages; tests for corrupt/non-package
-   archives, binary tarballs, and unreachable URLs.
+   pre-flight dependency check with version requirements, cleanup on error,
+   clear error messages; tests for corrupt/non-package archives, binary
+   tarballs, missing/outdated dependencies, and unreachable URLs.
 4. **M4 — Parity details**: multiple URLs, `lib`/`quiet`/`INSTALL_opts`
    passthrough, invisible return value; document behaviour differences (if
    any) from `install.packages()` in the man page.
