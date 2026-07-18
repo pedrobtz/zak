@@ -8,13 +8,18 @@ beyond the packages that ship with R itself (`utils`, `tools`).
 
 ### Goal
 
-Provide a single exported function that installs a source package from a URL,
-with the same end result and a similar feel to `install.packages()`:
+Provide a single exported function that installs a source package from a URL
+**including its dependencies**, with the same end result and a similar feel to
+`install.packages()`:
 
 ```r
 pax::install_url("https://example.com/pkg_1.2.3.tar.gz")
-library(pkg)  # works
+library(pkg)  # works — missing Depends/Imports/LinkingTo were installed too
 ```
+
+One call is the full behaviour: download the tarball, work out which of its
+dependencies are missing, install those from the configured repositories, then
+install the package itself.
 
 ### Design
 
@@ -23,7 +28,8 @@ library(pkg)  # works
 ```r
 install_url(url,
             lib = .libPaths()[1L],
-            dependencies = FALSE,   # v0.1.0: not yet supported, must be FALSE
+            dependencies = NA,      # NA = Depends/Imports/LinkingTo, as in install.packages()
+            repos = getOption("repos"),
             quiet = FALSE,
             INSTALL_opts = character())
 ```
@@ -32,6 +38,13 @@ install_url(url,
   `install.packages(pkgs = ...)`).
 - `lib` — target library, defaulting to the first element of `.libPaths()`,
   exactly as `install.packages()` does.
+- `dependencies` — same convention as `install.packages()`: `NA` (default)
+  installs missing `Depends`/`Imports`/`LinkingTo`; `TRUE` additionally
+  installs `Suggests` (non-recursively); `FALSE` installs none and instead
+  errors up front if hard dependencies are missing.
+- `repos` — where missing dependencies are installed *from* (the tarball
+  itself always comes from `url`). Defaults to the user's configured
+  repositories, as in `install.packages()`.
 - `quiet`, `INSTALL_opts` — passed through to the underlying install, mirroring
   the `install.packages()` arguments of the same names.
 
@@ -57,22 +70,31 @@ install_url(url,
    - **Binary** → v0.1.0 stops with a clear error stating that the tarball is
      a binary build (including the `Built:` platform string) and that only
      source tarballs are supported for now. Binary installs are scheduled for
-     v0.3.0, where the `Built:` platform must additionally be checked against
+     v0.2.0, where the `Built:` platform must additionally be checked against
      `R.version$platform` before installing.
-5. **Pre-flight dependency check** — installing from a file does *not* resolve
-   dependencies: with `repos = NULL`, `install.packages()` ignores its
+5. **Resolve and install dependencies** — this is the part `install.packages()`
+   does *not* do for local files: with `repos = NULL` it ignores its
    `dependencies` argument entirely and just runs `R CMD INSTALL`, which
-   requires `Depends`/`Imports`/`LinkingTo` packages to already be installed
-   and otherwise aborts with a terse "dependency 'x' is not available" error.
-   So before installing, parse those fields from `DESCRIPTION`
-   (`tools:::.split_dependencies()`-style parsing implemented with base
-   string functions), drop base/recommended packages that ship with R
-   (`installed.packages(priority = "base")`), and check the rest against the
-   current `.libPaths()` with `find.package()`. If any are missing, stop
-   up front with a single clear error listing all missing dependencies and a
-   hint to install them first (e.g. via `install.packages()` from CRAN).
-   Version requirements (e.g. `pkg (>= 1.2)`) are checked too, using
-   `utils::compareVersion()`.
+   aborts with a terse "dependency 'x' is not available" error if anything is
+   missing. `pax` fills that gap, in base R:
+   - Parse `Depends`/`Imports`/`LinkingTo` (plus `Suggests` when
+     `dependencies = TRUE`) from the tarball's `DESCRIPTION` with base string
+     functions (`tools:::.split_dependencies()`-style parsing).
+   - Drop R itself and base-priority packages
+     (`installed.packages(priority = "base")`).
+   - Determine which are missing or too old: check each against `.libPaths()`
+     with `find.package()` / `packageVersion()`, honouring version
+     requirements like `pkg (>= 1.2)` via `utils::compareVersion()`.
+   - Install the missing ones with a single
+     `utils::install.packages(missing, lib = lib, repos = repos,
+     quiet = quiet)` call. This delegates *transitive* dependency resolution
+     to `install.packages()` itself — recursion for free, still base R.
+   - If a dependency is not available in `repos` (checked against
+     `utils::available.packages(repos = repos)`), stop before installing
+     anything, with one error listing every unavailable package.
+   - With `dependencies = FALSE`, skip the install and keep only the check:
+     missing hard dependencies produce a single clear upfront error instead
+     of a mid-install failure.
 6. **Install** by delegating to the same machinery `install.packages()` uses
    for local files: call `utils::install.packages(pkgs = tarball_path,
    repos = NULL, type = "source", lib = lib, quiet = quiet,
@@ -97,12 +119,12 @@ install_url(url,
 
 ### Explicit non-goals for v0.1.0
 
-- No dependency *installation* (`dependencies = TRUE` errors with "not yet
-  supported"; planned for a later release). This actually matches
-  `install.packages()` itself, which ignores `dependencies` when installing
-  from a local file (`repos = NULL`). What v0.1.0 does add is the pre-flight
-  *check* (step 5) so missing dependencies produce one clear upfront error
-  instead of a mid-install failure.
+- Dependencies are installed from `repos` (CRAN-like repositories) only — a
+  dependency that itself only exists as a URL tarball is not resolved
+  recursively; that produces the "not available in repos" error. Chaining URL
+  installs is a possible later feature.
+- No upgrading of already-installed dependencies that satisfy the version
+  requirements — only missing or too-old packages are touched.
 - No binary packages: binary tarballs are *detected* (see step 4) but
   rejected with an informative error rather than installed; `.zip` is not
   accepted at all. No `git`/GitHub refs, no repos — source tarball URLs only.
@@ -137,27 +159,31 @@ URLs pointing at fixture tarballs built during the test run with
 
 1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, empty `install_url()`
    stub; `R CMD check` passes clean.
-2. **M2 — Happy path**: download + validate + install a single URL; test with a
-   `file://` fixture tarball.
-3. **M3 — Robustness**: magic-byte validation, DESCRIPTION metadata check,
+2. **M2 — Happy path**: download + validate + install a single URL with no
+   missing dependencies; test with a `file://` fixture tarball.
+3. **M3 — Dependency installation**: DESCRIPTION dependency parsing with
+   version requirements, missing/outdated detection, availability check
+   against `repos`, install via `install.packages()`, `dependencies =
+   NA/TRUE/FALSE` semantics; tests using a fixture package that depends on a
+   second fixture package served from a local `file://` repository (built
+   with `tools::write_PACKAGES()` — still base R).
+4. **M4 — Robustness**: magic-byte validation, DESCRIPTION metadata check,
    source-vs-binary detection (reject binary tarballs with a clear error),
-   pre-flight dependency check with version requirements, cleanup on error,
-   clear error messages; tests for corrupt/non-package archives, binary
-   tarballs, missing/outdated dependencies, and unreachable URLs.
-4. **M4 — Parity details**: multiple URLs, `lib`/`quiet`/`INSTALL_opts`
-   passthrough, invisible return value; document behaviour differences (if
-   any) from `install.packages()` in the man page.
-5. **M5 — Release**: README with examples, NEWS.md, version bumped to 0.1.0,
+   cleanup on error, clear error messages; tests for corrupt/non-package
+   archives, binary tarballs, unavailable dependencies, and unreachable URLs.
+5. **M5 — Parity details**: multiple URLs, `lib`/`repos`/`quiet`/
+   `INSTALL_opts` passthrough, invisible return value; document behaviour
+   differences (if any) from `install.packages()` in the man page.
+6. **M6 — Release**: README with examples, NEWS.md, version bumped to 0.1.0,
    `R CMD check --as-cran` clean on Linux/macOS/Windows.
 
 ## Later versions (directional, not committed)
 
-- **v0.2.0** — dependency resolution: parse `Depends`/`Imports`/`LinkingTo`
-  from the tarball's DESCRIPTION and install missing ones from CRAN via
-  `install.packages()`; `dependencies = TRUE` becomes functional.
-- **v0.3.0** — binary tarballs (`.tar.gz` with a `Built:` field, `.tgz`,
+- **v0.2.0** — binary tarballs (`.tar.gz` with a `Built:` field, `.tgz`,
   `.zip`) with platform-compatibility checks against `R.version$platform`, and
   checksum verification (`sha256 =` argument using `tools::md5sum`-style
   helpers or a base implementation).
-- **v0.4.0** — convenience resolvers: GitHub release/tag URLs expanded to
-  tarball URLs, still with zero added dependencies.
+- **v0.3.0** — convenience resolvers: GitHub release/tag URLs expanded to
+  tarball URLs, and recursive URL-to-URL dependency chains (a dependency that
+  is itself only available as a URL tarball), still with zero added
+  dependencies.
