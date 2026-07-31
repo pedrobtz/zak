@@ -2,6 +2,7 @@
 
 export(available_packages)
 export(installed_packages)
+export(package_url)
 
 importFrom(utils, available.packages)
 importFrom(utils, installed.packages)

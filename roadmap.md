@@ -70,6 +70,28 @@ These are the building blocks for the dependency step below: "what is already
 installed and at which version" and "what can be installed from `repos`" both
 become ordinary data frame subsetting.
 
+A third helper goes the other way, from a package name to the address a
+CRAN-like repository serves it at:
+
+```r
+package_url(pkgs, type = getOption("pkgType"), repos = getOption("repos"),
+            available = NULL)
+```
+
+It builds `<Repository>/<Package>_<Version><ext>` from the `Repository` column
+of `available_packages()`, with the extension following the requested type
+(`.tar.gz` for source, `.zip` for Windows, `.tgz` for macOS) and an optional
+`File` field overriding the file name, exactly as `utils::download.packages()`
+does. Besides the type strings R itself uses, `type` accepts the OS aliases
+`"windows"`, `"macos"` and `"linux"`; `"binary"` and `"both"` express a
+preference rather than a file, so they resolve to `.Platform$pkgType`. Passing
+a pre-fetched `available` data frame avoids contacting the repositories
+repeatedly.
+
+This closes the loop with `install_url()` — `install_url(package_url("jsonlite"))`
+is the long way round to `install.packages("jsonlite")` — and gives the
+dependency step a way to name the exact file it is about to install.
+
 **How it works (all base R)**
 
 1. **Download** the tarball with `utils::download.file(url, destfile,
@@ -159,18 +181,21 @@ become ordinary data frame subsetting.
 ```
 pax/
 ├── DESCRIPTION        # Package: pax, Depends: R (>= 3.6), Imports: utils, tools
-├── NAMESPACE          # export(install_url, available_packages, installed_packages)
+├── NAMESPACE          # export(install_url, available_packages, installed_packages, package_url)
 ├── LICENSE
 ├── R/
 │   ├── install_url.R  # exported entry point
 │   ├── packages.R     # available_packages() / installed_packages() + as_package_df()
+│   ├── package_url.R  # package_url() + type/extension resolution (internal)
 │   └── utils.R        # download/validate/metadata helpers (internal)
 ├── man/
 │   ├── install_url.Rd
 │   ├── available_packages.Rd
-│   └── installed_packages.Rd   # hand-written, kept in sync with the roxygen comments in R/
+│   ├── installed_packages.Rd
+│   └── package_url.Rd # hand-written, kept in sync with the roxygen comments in R/
 ├── tests/
 │   ├── test-packages.R      # plain base-R tests run via R CMD check
+│   ├── test-package_url.R
 │   ├── test-install_url.R
 │   └── ...            # fixtures: a tiny valid source package tarball, a corrupt file
 └── README.md
@@ -184,8 +209,8 @@ URLs pointing at fixture tarballs built during the test run with
 ### Milestones for v0.1.0
 
 1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, the
-   `available_packages()` / `installed_packages()` utilities with tests, and
-   an empty `install_url()` stub; `R CMD check` passes clean.
+   `available_packages()` / `installed_packages()` / `package_url()` utilities
+   with tests, and an empty `install_url()` stub; `R CMD check` passes clean.
 2. **M2 — Happy path**: download + validate + install a single URL with no
    missing dependencies; test with a `file://` fixture tarball.
 3. **M3 — Dependency installation**: DESCRIPTION dependency parsing with
