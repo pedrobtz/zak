@@ -92,11 +92,37 @@ This closes the loop with `install_url()` — `install_url(package_url("jsonlite
 is the long way round to `install.packages("jsonlite")` — and gives the
 dependency step a way to name the exact file it is about to install.
 
+Finally, a URL can be inspected before anything is transferred:
+
+```r
+url_info(url, timeout = 10L)    # data frame: url, exists, status, type, bytes
+url_exists(url, timeout = 10L)  # logical, named by url
+```
+
+These build on `base::curlGetHeaders()` (R >= 3.2, in base itself), which
+issues a HEAD request and exposes the final status through
+`attr(, "status")`. Two of its limits are handled here: it supports only
+http/https/ftp, so `file://` URLs are answered from the filesystem — which the
+test fixtures rely on — and it signals an error rather than returning a status
+when the host cannot be reached.
+
+`exists` is deliberately **three-valued**. Only 2xx is `TRUE` and only 404/410
+is `FALSE`; 403 (exists but forbidden), 405 (server refuses HEAD), 5xx, an
+unreachable host, and an R build without `capabilities("libcurl")` all give
+`NA`. The rule for callers is that a `FALSE` is worth acting on, while an `NA`
+means the question was not settled and the download should still be attempted.
+Refusing to install because a server dislikes HEAD would be worse than the
+error it is trying to pre-empt.
+
 **How it works (all base R)**
 
 1. **Download** the tarball with `utils::download.file(url, destfile,
    mode = "wb")` into a session temp dir from `tempfile()`. Respect the user's
    `options(download.file.method)`; fail with a clear error on non-zero status.
+   With several URLs, check them all with `url_exists()` first and stop before
+   transferring anything if any is definitively missing — a typo in the third
+   URL should not leave the first two installed. Only a `FALSE` blocks; an `NA`
+   proceeds to the download.
 2. **Validate** the download: file exists, is non-empty, and is a gzip tarball
    (check the magic bytes `1f 8b` with `readBin` rather than trusting the URL
    extension). List contents with `utils::untar(tarfile, list = TRUE)` and
@@ -181,21 +207,26 @@ dependency step a way to name the exact file it is about to install.
 ```
 pax/
 ├── DESCRIPTION        # Package: pax, Depends: R (>= 3.6), Imports: utils, tools
-├── NAMESPACE          # export(install_url, available_packages, installed_packages, package_url)
+├── NAMESPACE          # exports: install_url, available_packages, installed_packages,
+│                      #          package_url, url_info, url_exists
 ├── LICENSE
 ├── R/
 │   ├── install_url.R  # exported entry point
 │   ├── packages.R     # available_packages() / installed_packages() + as_package_df()
 │   ├── package_url.R  # package_url() + type/extension resolution (internal)
+│   ├── url_info.R     # url_info() / url_exists() + header parsing (internal)
 │   └── utils.R        # download/validate/metadata helpers (internal)
 ├── man/
 │   ├── install_url.Rd
 │   ├── available_packages.Rd
 │   ├── installed_packages.Rd
-│   └── package_url.Rd # hand-written, kept in sync with the roxygen comments in R/
+│   ├── package_url.Rd
+│   ├── url_info.Rd
+│   └── url_exists.Rd  # hand-written, kept in sync with the roxygen comments in R/
 ├── tests/
 │   ├── test-packages.R      # plain base-R tests run via R CMD check
 │   ├── test-package_url.R
+│   ├── test-url_info.R
 │   ├── test-install_url.R
 │   └── ...            # fixtures: a tiny valid source package tarball, a corrupt file
 └── README.md
@@ -208,9 +239,10 @@ URLs pointing at fixture tarballs built during the test run with
 
 ### Milestones for v0.1.0
 
-1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, the
-   `available_packages()` / `installed_packages()` / `package_url()` utilities
-   with tests, and an empty `install_url()` stub; `R CMD check` passes clean.
+1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, the utility layer
+   (`available_packages()`, `installed_packages()`, `package_url()`,
+   `url_info()` / `url_exists()`) with tests, and an empty `install_url()`
+   stub; `R CMD check` passes clean.
 2. **M2 — Happy path**: download + validate + install a single URL with no
    missing dependencies; test with a `file://` fixture tarball.
 3. **M3 — Dependency installation**: DESCRIPTION dependency parsing with
