@@ -228,14 +228,34 @@ pax/
 │   ├── test-package_url.R
 │   ├── test-url_info.R
 │   ├── test-install_url.R
+│   ├── test-network.R # opt-in, against a real CRAN mirror
 │   └── ...            # fixtures: a tiny valid source package tarball, a corrupt file
 └── README.md
 ```
 
 Testing stays dependency-free too: plain `stopifnot()`-style test scripts under
-`tests/` executed by `R CMD check`. Network-independent tests use `file://`
-URLs pointing at fixture tarballs built during the test run with
-`R CMD build` on a minimal in-test package.
+`tests/` executed by `R CMD check`, in two tiers.
+
+**Offline tier (always runs).** Fixture tarballs built during the test run with
+`R CMD build` on a minimal in-test package, reached over `file://` URLs, plus a
+local `file://` repository from `tools::write_PACKAGES()` for the dependency
+tests. Pure logic — header parsing, status interpretation, URL construction —
+is tested against synthetic inputs, so no assertion depends on a third party.
+
+**Network tier (opt-in).** `tests/test-network.R` runs against a real CRAN
+mirror, because the repository is the only authority on whether the address
+`package_url()` builds is the right one: it checks that the constructed source
+URL really resolves, that the Windows binary URL resolves too (exercising the
+OS-type handling from a non-Windows machine), that a missing file gives a real
+404, and that redirects are followed to the final status.
+
+CRAN requires that a check not fail for want of internet access, so this tier
+is gated twice: it runs only when `PAX_NETWORK_TESTS=true` (or `NOT_CRAN=true`,
+which the usual CI setups already set), and then bows out with a message if the
+mirror turns out to be unreachable. The reachability probe uses `url_exists()`
+itself, and only an `NA` counts as "no network" — a definitive `FALSE` for a
+file that should exist fails the run, so a broken `url_exists()` cannot quietly
+switch the rest of the file off.
 
 ### Milestones for v0.1.0
 
