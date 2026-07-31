@@ -83,12 +83,12 @@ pkg_type_ext <- function(type) {
 #' @seealso [available_packages()]
 #' @examples
 #' \dontrun{
-#' package_url("jsonlite")
-#' package_url("jsonlite", type = "windows")
+#' package_url("rlang")
+#' package_url("rlang", type = "windows")
 #'
 #' ## reuse one snapshot for many lookups
 #' avail <- available_packages(type = "source")
-#' package_url(c("jsonlite", "curl"), type = "source", available = avail)
+#' package_url(c("rlang", "jsonlite"), type = "source", available = avail)
 #' }
 #' @export
 package_url <- function(pkgs,

@@ -52,12 +52,12 @@ through an optional \code{File} field, which is honoured here as
 }
 \examples{
 \dontrun{
-package_url("jsonlite")
-package_url("jsonlite", type = "windows")
+package_url("rlang")
+package_url("rlang", type = "windows")
 
 ## reuse one snapshot for many lookups
 avail <- available_packages(type = "source")
-package_url(c("jsonlite", "curl"), type = "source", available = avail)
+package_url(c("rlang", "jsonlite"), type = "source", available = avail)
 }
 }
 \seealso{

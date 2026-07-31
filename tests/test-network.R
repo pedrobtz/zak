@@ -63,30 +63,46 @@ if (!enabled()) {
         avail_src <- available_packages(repos = CRAN, type = "source")
         stopifnot(is.data.frame(avail_src), nrow(avail_src) > 0L)
 
-        ## a package that has been on CRAN for years and has no dependencies
-        pkg <- "jsonlite"
-        stopifnot(pkg %in% avail_src$Package)
+        ## Long-standing CRAN packages with compiled code and no hard
+        ## dependencies of their own, so they stay usable as fixtures once
+        ## install_url() starts actually installing them. Several at once also
+        ## exercises package_url()'s vectorisation against real addresses.
+        pkgs <- c("rlang", "jsonlite")
+        stopifnot(all(pkgs %in% avail_src$Package))
 
-        src_url <- package_url(pkg, type = "source", available = avail_src)
+        src_urls <- package_url(pkgs, type = "source", available = avail_src)
         stopifnot(
-            endsWith(src_url[[pkg]], ".tar.gz"),
-            isTRUE(url_exists(src_url[[pkg]])[[1L]])
+            identical(names(src_urls), pkgs),
+            all(endsWith(src_urls, ".tar.gz")),
+            ## the version in the URL is the one the repository advertises
+            identical(
+                unname(src_urls),
+                paste0(avail_src$Repository[match(pkgs, avail_src$Package)], "/",
+                       pkgs, "_",
+                       avail_src$Version[match(pkgs, avail_src$Package)],
+                       ".tar.gz")
+            )
         )
 
-        ## The Windows binary is served from a different contrib path with a
+        src_ok <- url_exists(unname(src_urls))
+        stopifnot(identical(unname(src_ok), rep(TRUE, length(pkgs))))
+
+        ## The Windows binaries are served from a different contrib path with a
         ## different extension, so this exercises the OS-type handling from a
         ## machine that is (most likely) not Windows. CRAN only builds binaries
         ## for current R, so skip rather than fail if this R is too old.
         avail_win <- available_packages(repos = CRAN, type = "win.binary")
-        if (pkg %in% avail_win$Package) {
-            win_url <- package_url(pkg, type = "windows", available = avail_win)
+        win_pkgs <- pkgs[pkgs %in% avail_win$Package]
+        if (length(win_pkgs)) {
+            win_urls <- package_url(win_pkgs, type = "windows",
+                                    available = avail_win)
+            win_ok <- url_exists(unname(win_urls))
             stopifnot(
-                endsWith(win_url[[pkg]], ".zip"),
-                isTRUE(url_exists(win_url[[pkg]])[[1L]])
+                all(endsWith(win_urls, ".zip")),
+                identical(unname(win_ok), rep(TRUE, length(win_pkgs)))
             )
         } else {
-            message("no Windows binary for ", pkg,
-                    " at this R version; skipping that check")
+            message("no Windows binaries at this R version; skipping that check")
         }
 
         ## redirects are followed to the final status --------------------------
