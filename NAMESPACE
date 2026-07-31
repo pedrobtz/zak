@@ -1,0 +1,7 @@
+# Generated manually; keep in sync with the roxygen comments in R/.
+
+export(available_packages)
+export(installed_packages)
+
+importFrom(utils, available.packages)
+importFrom(utils, installed.packages)

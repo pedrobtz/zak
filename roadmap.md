@@ -48,6 +48,28 @@ install_url(url,
 - `quiet`, `INSTALL_opts` — passed through to the underlying install, mirroring
   the `install.packages()` arguments of the same names.
 
+**Utility functions**
+
+`available.packages()` and `installed.packages()` both return character
+matrices, which are awkward to filter and join. Two small exported wrappers
+return the same data as data frames with character columns, keeping the base R
+column names so the base documentation still applies:
+
+```r
+available_packages(repos = getOption("repos"), ...)  # one row per available package
+installed_packages(lib.loc = NULL, ...)              # one row per installed package
+```
+
+Both funnel through an internal `as_package_df()` that drops row names — a
+package can legitimately appear twice (installed in several libraries,
+distinguished by `LibPath`, or offered by several repositories) and duplicate
+row names are an error for data frames. A zero-row input keeps its columns, so
+callers can rely on the column set even when no repository is reachable.
+
+These are the building blocks for the dependency step below: "what is already
+installed and at which version" and "what can be installed from `repos`" both
+become ordinary data frame subsetting.
+
 **How it works (all base R)**
 
 1. **Download** the tarball with `utils::download.file(url, destfile,
@@ -81,17 +103,17 @@ install_url(url,
      `dependencies = TRUE`) from the tarball's `DESCRIPTION` with base string
      functions (`tools:::.split_dependencies()`-style parsing).
    - Drop R itself and base-priority packages
-     (`installed.packages(priority = "base")`).
-   - Determine which are missing or too old: check each against `.libPaths()`
-     with `find.package()` / `packageVersion()`, honouring version
+     (`installed_packages(priority = "base")`).
+   - Determine which are missing or too old by matching against
+     `installed_packages(lib.loc = .libPaths())`, honouring version
      requirements like `pkg (>= 1.2)` via `utils::compareVersion()`.
    - Install the missing ones with a single
      `utils::install.packages(missing, lib = lib, repos = repos,
      quiet = quiet)` call. This delegates *transitive* dependency resolution
      to `install.packages()` itself — recursion for free, still base R.
    - If a dependency is not available in `repos` (checked against
-     `utils::available.packages(repos = repos)`), stop before installing
-     anything, with one error listing every unavailable package.
+     `available_packages(repos = repos)`), stop before installing anything,
+     with one error listing every unavailable package.
    - With `dependencies = FALSE`, skip the install and keep only the check:
      missing hard dependencies produce a single clear upfront error instead
      of a mid-install failure.
@@ -137,15 +159,19 @@ install_url(url,
 ```
 pax/
 ├── DESCRIPTION        # Package: pax, Depends: R (>= 3.6), Imports: utils, tools
-├── NAMESPACE          # export(install_url); importFrom(utils, ...)
+├── NAMESPACE          # export(install_url, available_packages, installed_packages)
 ├── LICENSE
 ├── R/
-│   ├── install_url.R  # exported function
+│   ├── install_url.R  # exported entry point
+│   ├── packages.R     # available_packages() / installed_packages() + as_package_df()
 │   └── utils.R        # download/validate/metadata helpers (internal)
 ├── man/
-│   └── install_url.Rd # written by hand or via roxygen2 (dev-time only, not a dependency)
+│   ├── install_url.Rd
+│   ├── available_packages.Rd
+│   └── installed_packages.Rd   # hand-written, kept in sync with the roxygen comments in R/
 ├── tests/
-│   ├── test-install_url.R   # plain base-R tests run via R CMD check
+│   ├── test-packages.R      # plain base-R tests run via R CMD check
+│   ├── test-install_url.R
 │   └── ...            # fixtures: a tiny valid source package tarball, a corrupt file
 └── README.md
 ```
@@ -157,8 +183,9 @@ URLs pointing at fixture tarballs built during the test run with
 
 ### Milestones for v0.1.0
 
-1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, empty `install_url()`
-   stub; `R CMD check` passes clean.
+1. **M1 — Skeleton**: DESCRIPTION, NAMESPACE, license, the
+   `available_packages()` / `installed_packages()` utilities with tests, and
+   an empty `install_url()` stub; `R CMD check` passes clean.
 2. **M2 — Happy path**: download + validate + install a single URL with no
    missing dependencies; test with a `file://` fixture tarball.
 3. **M3 — Dependency installation**: DESCRIPTION dependency parsing with

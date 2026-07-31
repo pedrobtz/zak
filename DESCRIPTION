@@ -1,0 +1,17 @@
+Package: pax
+Type: Package
+Title: Install R Packages from URLs
+Version: 0.0.0.9000
+Authors@R:
+    person("pedrobtz", email = "pedrobtz@gmail.com", role = c("aut", "cre"))
+Description: Install R source packages directly from a URL pointing at a
+    '.tar.gz' archive, resolving and installing missing dependencies from the
+    configured repositories. Implemented using only the packages that ship
+    with R itself.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 3.6.0)
+Imports: utils
+URL: https://github.com/pedrobtz/pax
+BugReports: https://github.com/pedrobtz/pax/issues
+RoxygenNote: 7.3.2
