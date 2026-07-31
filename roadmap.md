@@ -88,8 +88,8 @@ preference rather than a file, so they resolve to `.Platform$pkgType`. Passing
 a pre-fetched `available` data frame avoids contacting the repositories
 repeatedly.
 
-This closes the loop with `install_url()` — `install_url(package_url("jsonlite"))`
-is the long way round to `install.packages("jsonlite")` — and gives the
+This closes the loop with `install_url()` — `install_url(package_url("rlang"))`
+is the long way round to `install.packages("rlang")` — and gives the
 dependency step a way to name the exact file it is about to install.
 
 Finally, a URL can be inspected before anything is transferred:
@@ -245,9 +245,16 @@ is tested against synthetic inputs, so no assertion depends on a third party.
 **Network tier (opt-in).** `tests/test-network.R` runs against a real CRAN
 mirror, because the repository is the only authority on whether the address
 `package_url()` builds is the right one: it checks that the constructed source
-URL really resolves, that the Windows binary URL resolves too (exercising the
+URLs really resolve, that the Windows binary URLs resolve too (exercising the
 OS-type handling from a non-Windows machine), that a missing file gives a real
 404, and that redirects are followed to the final status.
+
+The fixtures are `rlang` and `jsonlite` — long-standing CRAN packages with
+compiled code and no hard dependencies of their own, so the same names stay
+usable once `install_url()` starts genuinely installing them, and a
+dependency-free package keeps an install test about `pax` rather than about
+CRAN's dependency graph. Using two at once also exercises `package_url()`'s
+vectorisation against real addresses.
 
 CRAN requires that a check not fail for want of internet access, so this tier
 is gated twice: it runs only when `PAX_NETWORK_TESTS=true` (or `NOT_CRAN=true`,
