@@ -1,0 +1,11 @@
+# Generated manually; keep in sync with the roxygen comments in R/.
+
+export(available_packages)
+export(installed_packages)
+export(package_url)
+export(url_exists)
+export(url_info)
+
+importFrom(utils, URLdecode)
+importFrom(utils, available.packages)
+importFrom(utils, installed.packages)
