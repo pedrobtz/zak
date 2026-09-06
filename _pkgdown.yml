@@ -1,0 +1,26 @@
+url: https://github.com/pedrobtz/zak
+
+reference:
+  - title: Installation and plans
+    contents:
+      - install
+      - plan
+      - lock
+      - read_lock
+      - compare_lock
+      - restore
+  - title: Project environments
+    contents:
+      - dependencies
+      - init
+      - snapshot
+      - status
+      - project_library
+      - activate
+      - deactivate
+  - title: Package databases and cache
+    contents:
+      - available_packages
+      - installed_packages
+      - cache_info
+      - cache_clean

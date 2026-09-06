@@ -1,73 +1,77 @@
-# Package databases as data frames -------------------------------------------
-#
-# `available.packages()` and `installed.packages()` both return character
-# matrices, which are awkward to subset and filter. These helpers return the
-# same information as data frames with character columns, leaving the column
-# names untouched so the base R documentation still applies.
+as_package_data_frame <- function(packages) {
+  if (!is.matrix(packages)) {
+    stop(
+      "`packages` must be a matrix returned by an R package explorer.",
+      call. = FALSE
+    )
+  }
+  if (is.null(colnames(packages))) {
+    stop("`packages` must have column names.", call. = FALSE)
+  }
 
-#' Convert a package matrix to a data frame.
-#'
-#' Internal helper shared by [available_packages()] and [installed_packages()].
-#' Row names are dropped: a package can legitimately appear more than once
-#' (installed in several libraries, or offered by several repositories), and
-#' duplicate row names are an error for data frames.
-#'
-#' @param x A character matrix as returned by [utils::available.packages()] or
-#'   [utils::installed.packages()].
-#' @return A data frame with the columns of `x`, all of type character.
-#' @noRd
-as_package_df <- function(x) {
-    if (!is.matrix(x)) {
-        stop("'x' must be a matrix, as returned by available.packages() or ",
-             "installed.packages()", call. = FALSE)
-    }
-    cols <- colnames(x)
-    dimnames(x) <- list(NULL, cols)
-    ## optional = TRUE keeps column names verbatim; make.names() would mangle
-    ## the ones base R uses, such as "License_is_FOSS" or "NeedsCompilation".
-    df <- as.data.frame(x, stringsAsFactors = FALSE, optional = TRUE)
-    names(df) <- cols
-    df
+  columns <- colnames(packages)
+  rownames(packages) <- NULL
+  result <- as.data.frame(
+    packages,
+    stringsAsFactors = FALSE,
+    optional = TRUE
+  )
+  names(result) <- columns
+  result
 }
 
-#' Available packages as a data frame
+#' Explore available packages
 #'
-#' A thin wrapper around [utils::available.packages()] that returns a data
-#' frame instead of a character matrix.
+#' `available_packages()` wraps [utils::available.packages()] and returns its
+#' package database as a data frame instead of a character matrix. Warnings and
+#' errors from repository access are preserved.
 #'
-#' @param repos Character vector of repository URLs, as in
-#'   [utils::available.packages()].
-#' @param ... Further arguments passed to [utils::available.packages()], for
-#'   example `type` or `filters`.
+#' @param repos A character vector of repository URLs. Defaults to
+#'   `getOption("repos")`.
+#' @param ... Additional arguments passed to [utils::available.packages()],
+#'   such as `type` or `filters`.
+#'
 #' @return A data frame with one row per available package and the columns
-#'   documented in [utils::available.packages()] (`Package`, `Version`,
-#'   `Depends`, `Imports`, `Repository`, ...), all of type character. Missing
-#'   fields are `NA`. The result has zero rows if no repository is reachable
-#'   or configured.
+#'   returned by [utils::available.packages()]. Column names are preserved,
+#'   every column is character, and automatic row names allow duplicate package
+#'   names. A zero-row matrix returned by R becomes a zero-row data frame with
+#'   the same columns.
 #' @seealso [installed_packages()]
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' packages <- available_packages()
+#' packages[packages$Package == "jsonlite", c("Package", "Version")]
+#' }
 available_packages <- function(repos = getOption("repos"), ...) {
-    as_package_df(utils::available.packages(repos = repos, ...))
+  packages <- utils::available.packages(repos = repos, ...)
+  as_package_data_frame(packages)
 }
 
-#' Installed packages as a data frame
+#' Explore installed packages
 #'
-#' A thin wrapper around [utils::installed.packages()] that returns a data
-#' frame instead of a character matrix.
+#' `installed_packages()` wraps [utils::installed.packages()] and returns its
+#' package database as a data frame instead of a character matrix. A package
+#' found in multiple libraries has one row per library, distinguished by
+#' `LibPath`.
 #'
-#' Note that a package installed in more than one of `lib.loc` yields one row
-#' per library, distinguished by the `LibPath` column.
+#' @param lib.loc A character vector of library trees to search, or `NULL` to
+#'   use all known libraries.
+#' @param ... Additional arguments passed to [utils::installed.packages()],
+#'   such as `priority` or `fields`.
 #'
-#' @param lib.loc Character vector of library trees to search, or `NULL` (the
-#'   default) for [.libPaths()].
-#' @param ... Further arguments passed to [utils::installed.packages()], for
-#'   example `priority` or `fields`.
 #' @return A data frame with one row per installed package and the columns
-#'   documented in [utils::installed.packages()] (`Package`, `LibPath`,
-#'   `Version`, `Priority`, `Depends`, `Built`, ...), all of type character.
-#'   Missing fields are `NA`.
+#'   returned by [utils::installed.packages()]. Column names are preserved and
+#'   every column is character. Automatic row names allow the same package to
+#'   appear in multiple libraries.
 #' @seealso [available_packages()]
 #' @export
+#'
+#' @examples
+#' packages <- installed_packages(priority = "base")
+#' packages[, c("Package", "Version")]
 installed_packages <- function(lib.loc = NULL, ...) {
-    as_package_df(utils::installed.packages(lib.loc = lib.loc, ...))
+  packages <- utils::installed.packages(lib.loc = lib.loc, ...)
+  as_package_data_frame(packages)
 }

@@ -1,0 +1,14 @@
+# Build outputs. Kept package-name-agnostic so a rename cannot silently
+# start shipping stale artifacts.
+[.]Rcheck$
+^[^/]*[.]tar[.]gz$
+
+# Development notes and tooling, not part of the package.
+^_dev$
+^_pkgdown[.]yml$
+^docs$
+^AGENTS[.]md$
+^review[.]md$
+^plan[.]md$
+^url-tar-gz-comparison[.]md$
+^pak-renv-feature-map[.]md$
