@@ -1,0 +1,28 @@
+Package: zak
+Title: Install Remote Package Archives with Dependencies
+Version: 0.1.0
+Authors@R:
+    person("Pedro", "Baltazar", role = c("aut", "cre"),
+           email = "pedrobtz@gmail.com")
+Description: Installs R packages from configured repositories, local
+    directories, archives, or Git sources after resolving and
+    installing their required dependencies. Installation is delegated to R's
+    own package installer, and dependency resolution reproduces the package
+    selection that installer performs. Provides inspectable plans, data-frame
+    views of package databases, source provenance, static project discovery,
+    package-project initialization, isolated project libraries, explicit
+    activation, and versioned JSON lockfiles.
+License: MIT + file LICENSE
+URL: https://github.com/pedrobtz/zak
+BugReports: https://github.com/pedrobtz/zak/issues
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    digest (>= 0.6.0)
+Suggests:
+    jsonlite (>= 1.8.0),
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.0.0
